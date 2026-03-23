@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: litmus
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: litmus-admin
+  namespace: litmus
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: litmus-admin
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: litmus-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: litmus-admin
+subjects:
+  - kind: ServiceAccount
+    name: litmus-admin
+    namespace: litmus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litmus-operator
+  namespace: litmus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: litmus-operator
+  template:
+    metadata:
+      labels:
+        app: litmus-operator
+    spec:
+      serviceAccountName: litmus-admin
+      containers:
+        - name: operator
+          image: litmuschaos/litmus-operator:2.0.0
+          env:
+            - name: WATCH_NAMESPACE
+              value: ""
+            - name: LITMUS_CHAOS_NAMESPACE
+              value: litmus
+---
+apiVersion: chaosengineering.litmus.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: backend-pod-kill
+  namespace: easytrading
+spec:
+  appinfo:
+    appns: easytrading
+    applabel: "app=backend"
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: pod-delete
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "30"
+            - name: CHAOS_INTERVAL
+              value: "10"
+            - name: FORCE
+              value: "false"
+---
+apiVersion: chaosengineering.litmus.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: backend-container-kill
+  namespace: easytrading
+spec:
+  appinfo:
+    appns: easytrading
+    applabel: "app=backend"
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: container-kill
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "30"
+            - name: CHAOS_INTERVAL
+              value: "10"
+            - name: TARGET_CONTAINER
+              value: "backend"
+---
+apiVersion: chaosengineering.litmus.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: network-partition
+  namespace: easytrading
+spec:
+  appinfo:
+    appns: easytrading
+    applabel: "app=backend"
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: network-partition
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "30"
+            - name: APP_DETAILS
+              value: '{"namespace":"easytrading","label":"app=backend"}'

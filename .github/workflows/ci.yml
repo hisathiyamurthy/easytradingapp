@@ -1,0 +1,336 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ============================================================
+  # Backend CI
+  # ============================================================
+  
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov
+
+      - name: Run linter
+        run: |
+          cd backend
+          pip install ruff
+          ruff check .
+
+      - name: Run type checker
+        run: |
+          cd backend
+          pip install mypy
+          mypy . --ignore-missing-imports
+
+      - name: Run tests
+        run: |
+          cd backend
+          pytest tests/ -v --cov=. --cov-report=xml --cov-report=term
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: backend
+
+  # ============================================================
+  # Frontend CI
+  # ============================================================
+  
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run linter
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Run type checker
+        run: |
+          cd frontend
+          npm run typecheck
+
+      - name: Run tests
+        run: |
+          cd frontend
+          npm run test -- --coverage
+
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          flags: frontend
+
+  # ============================================================
+  # Security Scan - Backend
+  # ============================================================
+  
+  security-backend:
+    name: Security Scan - Backend
+    runs-on: ubuntu-latest
+    needs: [backend-test]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          pip install bandit safety pip-audit
+
+      - name: Run Bandit
+        run: |
+          cd backend
+          bandit -r . -x ./tests -f json -o bandit-report.json || true
+
+      - name: Run Safety
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          safety check --json > safety-report.json || true
+
+      - name: Run pip-audit
+        run: |
+          cd backend
+          pip-audit -r requirements.txt --format=json > pip-audit-report.json || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-backend
+          path: |
+            backend/bandit-report.json
+            backend/safety-report.json
+            backend/pip-audit-report.json
+          retention-days: 30
+
+  # ============================================================
+  # Security Scan - Frontend
+  # ============================================================
+  
+  security-frontend:
+    name: Security Scan - Frontend
+    runs-on: ubuntu-latest
+    needs: [frontend-test]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run npm audit
+        run: |
+          cd frontend
+          npm audit --audit-level=high --json > npm-audit-report.json || true
+
+      - name: Run Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: test
+          args: --severity-threshold=high --json > snyk-report.json || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-frontend
+          path: |
+            frontend/npm-audit-report.json
+            frontend/snyk-report.json
+          retention-days: 30
+
+  # ============================================================
+  # Docker Build - Backend
+  # ============================================================
+  
+  docker-build-backend:
+    name: Build Docker - Backend
+    runs-on: ubuntu-latest
+    needs: [security-backend, security-frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: easytradingapp/backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value={{timestamp}}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # Docker Build - Frontend
+  # ============================================================
+  
+  docker-build-frontend:
+    name: Build Docker - Frontend
+    runs-on: ubuntu-latest
+    needs: [security-frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: easytradingapp/frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # Deploy - Staging
+  # ============================================================
+  
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [docker-build-backend, docker-build-frontend]
+    if: github.ref == 'refs/heads/develop'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging..."
+          # Add your deployment commands here
+          # kubectl config use-context staging
+          # kubectl apply -f k8s/staging/
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          echo "Deployment completed"
+
+  # ============================================================
+  # Deploy - Production
+  # ============================================================
+  
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [docker-build-backend, docker-build-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production..."
+          # Add your deployment commands here
+          # kubectl config use-context production
+          # kubectl apply -f k8s/production/
+
+      - name: Notify deployment
+        run: |
+          echo "Production deployment completed"

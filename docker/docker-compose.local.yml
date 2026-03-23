@@ -1,0 +1,163 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: easytrading-db-local
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: easytradingapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: easytrading-redis-local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: easytrading-rabbitmq-local
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  mock-broker:
+    build:
+      context: ../mock-broker
+      dockerfile: Dockerfile
+    container_name: easytrading-mock-broker
+    environment:
+      - BROKER_PORT=8001
+      - LOG_LEVEL=DEBUG
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../mock-broker:/app
+      - /app/__pycache__
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: easytrading-backend-local
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/easytradingapp
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - SECRET_KEY=dev-secret-key-do-not-use-in-production
+      - ENVIRONMENT=development
+      - MOCK_BROKER_URL=http://mock-broker:8001
+      - BROKER_MODE=mock
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      mock-broker:
+        condition: service_started
+    volumes:
+      - ../backend:/app
+      - /app/__pycache__
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.worker
+    container_name: easytrading-worker-local
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/easytradingapp
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - ENVIRONMENT=development
+      - MOCK_BROKER_URL=http://mock-broker:8001
+      - BROKER_MODE=mock
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+      - mock-broker
+    volumes:
+      - ../backend:/app
+    command: celery -A worker.celery worker --loglevel=debug
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: easytrading-frontend-local
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+    command: npm run dev
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: easytrading-prometheus-local
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: easytrading-grafana-local
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: easytrading-mailhog-local
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: easytrading-local

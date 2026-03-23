@@ -1,0 +1,145 @@
+{
+  "config": {
+    "configFile": "/home/sathiya/easytradingapp/playwright.config.ts",
+    "rootDir": "/home/sathiya/easytradingapp/tests/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/sathiya/easytradingapp/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/sathiya/easytradingapp/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 20000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "html",
+        {
+          "outputFolder": "playwright-report"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "playwright-report/test-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "debug-html.spec.ts",
+      "file": "debug-html.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "Debug registration - check actual rendered HTML",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 20000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6851,
+                  "errors": [],
+                  "stdout": [
+                    {
+                      "text": "[error]: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                    },
+                    {
+                      "text": "[verbose]: [DOM] Input elements should have autocomplete attributes (suggested: \"new-password\"): (More info: https://goo.gl/9p2vKq) %o\n"
+                    },
+                    {
+                      "text": "[verbose]: [DOM] Input elements should have autocomplete attributes (suggested: \"new-password\"): (More info: https://goo.gl/9p2vKq) %o\n"
+                    },
+                    {
+                      "text": "[error]: Failed to load resource: the server responded with a status of 429 (Too Many Requests)\n"
+                    },
+                    {
+                      "text": "=== ROOT CONTENT ===\n"
+                    },
+                    {
+                      "text": "<div class=\"min-h-screen flex\"><div class=\"hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 flex-col justify-center items-center p-12\"><div class=\"max-w-md text-center\"><div class=\"flex justify-center mb-8\"><div class=\"w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-trending-up w-10 h-10 text-white\"><polyline points=\"22 7 13.5 15.5 8.5 10.5 2 17\"></polyline><polyline points=\"16 7 22 7 22 13\"></polyline></svg></div></div><h1 class=\"text-4xl font-bold text-white mb-4\">EasyTrade</h1><p class=\"text-primary-100 text-lg mb-8\">Join thousands of traders using our professional algorithmic trading platform</p><div class=\"grid grid-cols-2 gap-4 text-sm text-primary-100\"><div class=\"bg-white/10 rounded-xl p-4 backdrop-blur-sm\"><div class=\"text-2xl font-bold text-white\">50+</div><div>Technical Indicators</div></div><div class=\"bg-white/10 rounded-xl p-4 backdrop-blur-sm\"><div class=\"text-2xl font-bold text-white\">4</div><div>Indian Brokers</div></div><div class=\"bg-white/10 rounded-xl p-4 backdrop-blur-sm\"><div class=\"text-2xl font-bold text-white\">99.9%</div><div>Uptime SLA</div></div><div class=\"bg-white/10 rounded-xl p-4 backdrop-blur-sm\"><div class=\"text-2xl font-bold text-white\">Real-time</div><div>Market Data</div></div></div></div></div><div class=\"flex-1 flex items-center justify-center p-8 bg-surface-50\"><div class=\"w-full max-w-md\"><div class=\"lg:hidden flex items-center justify-center gap-3 mb-8\"><div class=\"w-12 h-12 bg-primary-600 rounded-xl flex items-center justify-center\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-trending-up w-6 h-\n"
+                    },
+                    {
+                      "text": "=== BODY TEXT ===\n"
+                    },
+                    {
+                      "text": "EasyTrade\n\nJoin thousands of traders using our professional algorithmic trading platform\n\n50+\nTechnical Indicators\n4\nIndian Brokers\n99.9%\nUptime SLA\nReal-time\nMarket Data\nCreate Account\n\nRegister for access to the trading platform\n\nToo many registration attempts. Please try again later.\n\nFirst Name\nLast Name\nEmail address\nPhone Number (Optional)\nPassword\nConfirm Password\n\nNote: After registration, your account will require approval from an administrator before you can log in.\n\nCreate Account\n\nAlready have an account? Sign in\n\n← Back to Login\n"
+                    }
+                  ],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-03-15T08:34:09.458Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "4e61d71742795fdeeb66-0dee7795436e86d86499",
+          "file": "debug-html.spec.ts",
+          "line": 3,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-15T08:34:08.227Z",
+    "duration": 8460.169,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

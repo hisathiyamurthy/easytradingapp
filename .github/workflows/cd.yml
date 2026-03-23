@@ -1,0 +1,238 @@
+name: CD Pipeline - Kubernetes Deployment
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  KUBECONFIG: ${{ secrets.KUBECONFIG }}
+
+jobs:
+  # ============================================================
+  # Build and Push Images
+  # ============================================================
+  
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    
+    outputs:
+      backend-tag: ${{ steps.meta-backend.outputs.tags }}
+      frontend-tag: ${{ steps.meta-frontend.outputs.tags }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Backend
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Frontend
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # Security Scan
+  # ============================================================
+  
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================================
+  # Deploy to Kubernetes
+  # ============================================================
+  
+  deploy-kubernetes:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [build-and-push, security-scan]
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/k8s-set-context@v1
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Verify Kubernetes connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      # Update Kubernetes manifests with new image tags
+      - name: Update Kubernetes manifests
+        run: |
+          # Update backend deployment
+          cd k8s
+          BACKEND_TAG="${{ needs.build-and-push.outputs.backend-tag }}"
+          FRONTEND_TAG="${{ needs.build-and-push.outputs.frontend-tag }}"
+          
+          # Replace image tags in deployment files
+          sed -i "s|image: .*/backend:.*|image: $BACKEND_TAG|" backend-deployment.yaml
+          sed -i "s|image: .*/frontend:.*|image: $FRONTEND_TAG|" frontend-deployment.yaml
+
+      - name: Deploy to Kubernetes
+        run: |
+          cd k8s
+          
+          # Apply namespace
+          kubectl apply -f namespace.yaml
+          
+          # Apply secrets
+          kubectl apply -f secrets.yaml
+          
+          # Apply ConfigMaps
+          kubectl apply -f configmap.yaml
+          
+          # Apply database (if needed)
+          kubectl apply -f database/
+          
+          # Apply Redis
+          kubectl apply -f redis/
+          
+          # Apply backend
+          kubectl apply -f backend-deployment.yaml
+          kubectl apply -f backend-service.yaml
+          
+          # Apply frontend
+          kubectl apply -f frontend-deployment.yaml
+          kubectl apply -f frontend-service.yaml
+          
+          # Apply ingress
+          kubectl apply -f ingress.yaml
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/backend -n easytradingapp --timeout=300s
+          kubectl rollout status deployment/frontend -n easytradingapp --timeout=300s
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n easytradingapp
+          kubectl get services -n easytradingapp
+          kubectl get ingress -n easytradingapp
+
+      - name: Post deployment to Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1.24
+        with:
+          payload: |
+            {
+              "text": "Deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Deployment ${{ job.status }}*\n\n*Environment:* Production\n*Backend:* ${{ needs.build-and-push.outputs.backend-tag }}\n*Frontend:* ${{ needs.build-and-push.outputs.frontend-tag }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================================
+  # Smoke Tests
+  # ============================================================
+  
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-kubernetes]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests..."
+          
+          # Test API health endpoint
+          curl -f https://api.easytradingapp.com/health || exit 1
+          
+          # Test frontend
+          curl -f https://easytradingapp.com || exit 1
+          
+          echo "Smoke tests passed"
+
+      - name: Report status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "Smoke tests passed!"
+          else
+            echo "Smoke tests failed!"
+            exit 1
+          fi

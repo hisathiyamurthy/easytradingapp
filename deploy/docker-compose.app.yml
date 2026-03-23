@@ -1,0 +1,52 @@
+# Application services - Can be restarted independently without affecting data
+# Depends on infrastructure being running
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: trading_backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:${DB_PASSWORD:-postgres}@trading_db:5432/trading
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis}@trading_redis:6379
+      - SECRET_KEY=${SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - ENCRYPTION_SALT=${ENCRYPTION_SALT}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    ports:
+      - "8000:8000"
+    external_links:
+      - trading_db:trading_db
+      - trading_redis:trading_redis
+    restart: unless-stopped
+    networks:
+      - trading_network
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: trading_frontend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    ports:
+      - "5300:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  mock-broker:
+    build:
+      context: ../mock-broker
+      dockerfile: Dockerfile
+    container_name: trading_broker
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+networks:
+  trading_network:
+    name: trading_network
+    external: true
